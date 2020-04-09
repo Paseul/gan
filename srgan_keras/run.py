@@ -4,18 +4,16 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-from keras import Input
-from keras.applications import VGG19
-from keras.callbacks import TensorBoard
-from keras.layers import BatchNormalization, Activation, LeakyReLU, Add, Dense
-from keras.layers.convolutional import Conv2D, UpSampling2D
-from keras.models import Model
-from keras.optimizers import Adam
-from scipy.misc import imread, imresize
-from tensorflow.python.client import device_lib
-from tensorflow.python.framework.ops import disable_eager_execution
+from tensorflow.keras import Input
+from tensorflow.keras.applications import VGG19
+from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.layers import BatchNormalization, Activation, LeakyReLU, Add, Dense
+from tensorflow.keras.layers import Conv2D, UpSampling2D
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from skimage.io import imread
+from skimage.transform import resize
 
-disable_eager_execution()
 
 def residual_block(x):
     """
@@ -154,12 +152,13 @@ def build_vgg():
     input_shape = (256, 256, 3)
 
     # Load a pre-trained VGG19 model trained on 'Imagenet' dataset
-    vgg = VGG19(weights="imagenet")
+    vgg = VGG19(weights="imagenet", include_top=False, input_tensor=Input(shape=(256, 256, 3)))
     vgg.outputs = [vgg.layers[9].output]
 
     input_layer = Input(shape=input_shape)
 
     # Extract features
+    vgg.summary()
     features = vgg(input_layer)
 
     # Create a Keras model
@@ -179,12 +178,12 @@ def sample_images(data_dir, batch_size, high_resolution_shape, low_resolution_sh
 
     for img in images_batch:
         # Get an ndarray of the current image
-        img1 = imread(img, mode='RGB')
+        img1 = imread(img)
         img1 = img1.astype(np.float32)
 
         # Resize the image
-        img1_high_resolution = imresize(img1, high_resolution_shape)
-        img1_low_resolution = imresize(img1, low_resolution_shape)
+        img1_high_resolution = resize(img1, high_resolution_shape)
+        img1_low_resolution = resize(img1, low_resolution_shape)
 
         # Do a random horizontal flip
         if np.random.random() < 0.5:
@@ -235,12 +234,10 @@ def write_log(callback, name, value, batch_no):
 
 
 if __name__ == '__main__':
-    
-    print(device_lib.list_local_devices())
-    data_dir = "../data/img_align_celeba/*.*"
+    data_dir = "data/img_align_celeba/*.*"
     epochs = 30000
     batch_size = 1
-    mode = 'train'
+    mode = 'predict'
 
     # Shape of low-resolution and high-resolution images
     low_resolution_shape = (64, 64, 3)
@@ -272,7 +269,6 @@ if __name__ == '__main__':
 
         # Generate high-resolution images from low-resolution images
         generated_high_resolution_images = generator(input_low_resolution)
-
         # Extract feature maps of the generated images
         features = vgg(generated_high_resolution_images)
 
@@ -287,7 +283,8 @@ if __name__ == '__main__':
         adversarial_model.compile(loss=['binary_crossentropy', 'mse'], loss_weights=[1e-3, 1], optimizer=common_optimizer)
 
         # Add Tensorboard
-        tensorboard = TensorBoard(log_dir="logs/".format(time.time()))
+        tensorboard = TensorBoard(log_dir="logs/training")
+        train_summary_writer = tf.summary.create_file_writer("logs/training")
         tensorboard.set_model(generator)
         tensorboard.set_model(discriminator)
 
@@ -343,8 +340,11 @@ if __name__ == '__main__':
             print("g_loss:", g_loss)
 
             # Write the losses to Tensorboard
-            write_log(tensorboard, 'g_loss', g_loss[0], epoch)
-            write_log(tensorboard, 'd_loss', d_loss[0], epoch)
+            with train_summary_writer.as_default():
+                tf.summary.scalar('g_loss', g_loss[0], step=epoch)
+                tf.summary.scalar('d_loss', d_loss[0], step=epoch)
+            # write_log(tensorboard, 'g_loss', g_loss[0], epoch)
+            # write_log(tensorboard, 'd_loss', d_loss[0], epoch)
 
             # Sample and save images after every 100 epochs
             if epoch % 100 == 0:
@@ -380,7 +380,7 @@ if __name__ == '__main__':
         high_resolution_images, low_resolution_images = sample_images(data_dir=data_dir, batch_size=10,
                                                                       low_resolution_shape=low_resolution_shape,
                                                                       high_resolution_shape=high_resolution_shape)
-        # Normalize images
+        # Normalize imagesModelCheckpoint
         high_resolution_images = high_resolution_images / 127.5 - 1.
         low_resolution_images = low_resolution_images / 127.5 - 1.
 
