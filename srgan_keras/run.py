@@ -13,6 +13,13 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from skimage.io import imread
 from skimage.transform import resize
+import argparse
+
+# construct the argument parser and parse the arguments
+ap = argparse.ArgumentParser()
+ap.add_argument("-m", "--mode", type=str, default="train",
+	help="path to (optional) output video file")
+args = vars(ap.parse_args())
 
 
 def residual_block(x):
@@ -237,7 +244,7 @@ if __name__ == '__main__':
     data_dir = "data/img_align_celeba/*.*"
     epochs = 30000
     batch_size = 1
-    mode = 'predict'
+    mode = args["mode"]
 
     # Shape of low-resolution and high-resolution images
     low_resolution_shape = (64, 64, 3)
@@ -246,7 +253,7 @@ if __name__ == '__main__':
     # Common optimizer for all networks
     common_optimizer = Adam(0.0002, 0.5)
 
-    if mode == 'train':
+    if mode == "train":
         # Build and compile VGG19 network to extract features
         vgg = build_vgg()
         vgg.trainable = False
